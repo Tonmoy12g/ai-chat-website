@@ -12,6 +12,7 @@ WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "").strip()
 WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID", "").strip()
 WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "").strip()
 GRAPH_API = "https://graph.facebook.com/v21.0"
+WHATSAPP_WABA_ID = os.environ.get("WHATSAPP_WABA_ID", "2534359393738787").strip()
 
 # WhatsApp ব্যবহারকারীদের ছোট কথোপকথনের ইতিহাস (সার্ভার রিস্টার্টে মুছে যাবে)
 wa_history = {}
@@ -212,6 +213,26 @@ def privacy():
 <h2>Contact</h2>
 <p>Questions about this policy: mdtonmoyhossen322@gmail.com</p>
 </body></html>""", 200
+
+
+@app.route("/check-waba")
+def check_waba():
+    try:
+        r = requests.get(f"{GRAPH_API}/{WHATSAPP_WABA_ID}/subscribed_apps",
+                         headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}, timeout=30)
+        return jsonify({"status": r.status_code, "body": r.text[:500]})
+    except Exception as e:
+        return jsonify({"error": repr(e)})
+
+
+@app.route("/subscribe-waba")
+def subscribe_waba():
+    try:
+        r = requests.post(f"{GRAPH_API}/{WHATSAPP_WABA_ID}/subscribed_apps",
+                          headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}, timeout=30)
+        return jsonify({"status": r.status_code, "body": r.text[:500]})
+    except Exception as e:
+        return jsonify({"error": repr(e)})
 
 
 @app.route("/debug")
