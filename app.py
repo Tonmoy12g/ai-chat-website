@@ -8,6 +8,14 @@ app = Flask(__name__)
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip().strip('"').strip("'")
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
 
+WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "").strip()
+WHATSAPP_PHONE_ID = os.environ.get("WHATSAPP_PHONE_ID", "").strip()
+WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "").strip()
+GRAPH_API = "https://graph.facebook.com/v21.0"
+
+# WhatsApp ব্যবহারকারীদের ছোট কথোপকথনের ইতিহাস (সার্ভার রিস্টার্টে মুছে যাবে)
+wa_history = {}
+
 SYSTEM_INSTRUCTION = (
     "You are a friendly and helpful AI assistant on a public website. "
     "Answer any question the user asks, clearly and helpfully. "
@@ -91,6 +99,91 @@ def chat():
     except Exception as e:
         print("CHAT ERROR:", repr(e), flush=True)
         return jsonify({"reply": "দুঃখিত, সার্ভারে সমস্যা হয়েছে। একটু পরে আবার চেষ্টা করুন।"}), 200
+
+def ask_ai(message, history=None):
+    """Gemini থেকে উত্তর আনে — ওয়েবসাইট চ্যাট আর WhatsApp দুটোই ব্যবহার করে।"""
+    if not GEMINI_API_KEY:
+        return "দুঃখিত, AI এখনো চালু হয়নি।"
+    history = history or []
+    contents = []
+    for item in history[-10:]:
+        role = "user" if item.get("role") == "user" else "model"
+        text = (item.get("text") or "")[:2000]
+        if text:
+            contents.append({"role": role, "parts": [{"text": text}]})
+    contents.append({"role": "user", "parts": [{"text": message[:2000]}]})
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_INSTRUCTION}]},
+        "contents": contents,
+    }
+    models_to_try = list(dict.fromkeys([MODEL, "gemini-3.8-flash", "gemini-3.6-flash"]))
+    try:
+        for model in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=payload, timeout=45)
+            if r.status_code == 200:
+                out = r.json()
+                parts = out.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                reply = "".join(p.get("text", "") for p in parts).strip()
+                if reply:
+                    return reply
+            else:
+                print("GEMINI ERROR (wa):", model, r.status_code, r.text[:300], flush=True)
+    except Exception as e:
+        print("ASK_AI ERROR:", repr(e), flush=True)
+    return "দুঃখিত, এখন উত্তর দিতে পারছি না। একটু পরে আবার চেষ্টা করুন।"
+
+
+def send_whatsapp(to, text):
+    if not (WHATSAPP_TOKEN and WHATSAPP_PHONE_ID):
+        print("WA SEND SKIPPED: token/phone id missing", flush=True)
+        return
+    try:
+        r = requests.post(
+            f"{GRAPH_API}/{WHATSAPP_PHONE_ID}/messages",
+            headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}", "Content-Type": "application/json"},
+            json={"messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": text[:4000]}},
+            timeout=30,
+        )
+        if r.status_code != 200:
+            print("WA SEND ERROR:", r.status_code, r.text[:300], flush=True)
+    except Exception as e:
+        print("WA SEND EXC:", repr(e), flush=True)
+
+
+@app.route("/webhook", methods=["GET"])
+def webhook_verify():
+    mode = request.args.get("hub.mode")
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+    if mode == "subscribe" and token and token == WHATSAPP_VERIFY_TOKEN:
+        return challenge, 200
+    return "Verification failed", 403
+
+
+@app.route("/webhook", methods=["POST"])
+def webhook_receive():
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        for entry in data.get("entry", []):
+            for change in entry.get("changes", []):
+                value = change.get("value", {})
+                for msg in value.get("messages", []):
+                    if msg.get("type") != "text":
+                        continue
+                    sender = msg.get("from", "")
+                    text = (msg.get("text", {}) or {}).get("body", "").strip()
+                    if not sender or not text:
+                        continue
+                    hist = wa_history.get(sender, [])
+                    reply = ask_ai(text, hist)
+                    hist = hist + [{"role": "user", "text": text}, {"role": "model", "text": reply}]
+                    wa_history[sender] = hist[-10:]
+                    send_whatsapp(sender, reply)
+    except Exception as e:
+        print("WEBHOOK ERROR:", repr(e), flush=True)
+    return "ok", 200
+
 
 @app.route("/health")
 def health():
