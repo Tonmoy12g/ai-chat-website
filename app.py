@@ -70,10 +70,14 @@ def ask_ai(message, history=None):
             "Authorization": f"Bearer {GROQ_API_KEY}",
             "Content-Type": "application/json"
         }
+        
+        # Groq এর নতুন সাপোর্টেড মডেল ব্যবহার করা হয়েছে
         payload = {
-            "model": "llama-3.1-8b-instant", # Groq এর দ্রুত মডেল
-            "messages": messages
+            "model": "openai/gpt-oss-20b", 
+            "messages": messages,
+            "max_tokens": 1024
         }
+        
         r = requests.post("https://api.groq.com/openai/v1/chat/completions", 
                           headers=headers, json=payload, timeout=30)
         
