@@ -4,10 +4,8 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-# API Keys
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip().strip('"').strip("'")
+# --- শুধুমাত্র Groq API Key ---
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
 
 # WhatsApp Settings
 WHATSAPP_TOKEN = os.environ.get("WHATSAPP_TOKEN", "").strip()
@@ -16,7 +14,6 @@ WHATSAPP_VERIFY_TOKEN = os.environ.get("WHATSAPP_VERIFY_TOKEN", "").strip()
 GRAPH_API = "https://graph.facebook.com/v21.0"
 WHATSAPP_WABA_ID = os.environ.get("WHATSAPP_WABA_ID", "2534359393738787").strip()
 
-# Variables
 wa_history = {}
 debug_state = {"last_webhook": None, "last_send": None}
 
@@ -43,8 +40,8 @@ def home():
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    if not (GEMINI_API_KEY or GROQ_API_KEY):
-        return jsonify({"reply": "⚠️ সার্ভারে AI এখনো চালু হয়নি (API key সেট করা হয়নি)।"}), 200
+    if not GROQ_API_KEY:
+        return jsonify({"reply": "⚠️ সার্ভারে AI চালু হয়নি (Groq API key সেট করা হয়নি)।"}), 200
 
     data = request.get_json(force=True) or {}
     message = (data.get("message") or "").strip()
@@ -56,72 +53,39 @@ def chat():
     reply = ask_ai(message, history)
     return jsonify({"reply": reply})
 
-# ---------------- AI Logic ----------------
+# ---------------- AI Logic (শুধু Groq) ----------------
 
 def ask_ai(message, history=None):
-    """প্রথমে Groq-তে চেষ্টা করবে, ফেল করলে Gemini-তে যাবে।"""
-    
-    # --- ১. Groq API ---
-    if GROQ_API_KEY:
-        try:
-            messages = [{"role": "system", "content": SYSTEM_INSTRUCTION}]
-            for item in (history or [])[-10:]:
-                role = "user" if item.get("role") == "user" else "assistant"
-                messages.append({"role": role, "content": (item.get("text") or "")[:2000]})
-            messages.append({"role": "user", "content": message[:2000]})
+    if not GROQ_API_KEY:
+        return "দুঃখিত, AI কী সেট করা নেই।"
 
-            headers = {
-                "Authorization": f"Bearer {GROQ_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": "llama-3.1-8b-instant", # Groq এর ফ্রি ও দ্রুত মডেল
-                "messages": messages
-            }
-            r = requests.post("https://api.groq.com/openai/v1/chat/completions", 
-                              headers=headers, json=payload, timeout=30)
-            
-            if r.status_code == 200:
-                return r.json()["choices"][0]["message"]["content"].strip()
-            else:
-                print("GROQ ERROR:", r.status_code, r.text[:300], flush=True)
-        except Exception as e:
-            print("GROQ EXCEPTION:", repr(e), flush=True)
-
-    # --- ২. Gemini API (Fallback) ---
-    if not GEMINI_API_KEY:
-        return "দুঃখিত, কোনো AI কী সেট করা নেই।"
-    
-    contents = []
-    for item in (history or [])[-10:]:
-        role = "user" if item.get("role") == "user" else "model"
-        text = (item.get("text") or "")[:2000]
-        if text:
-            contents.append({"role": role, "parts": [{"text": text}]})
-    contents.append({"role": "user", "parts": [{"text": message[:2000]}]})
-    
-    payload = {
-        "system_instruction": {"parts": [{"text": SYSTEM_INSTRUCTION}]},
-        "contents": contents,
-    }
-    models_to_try = list(dict.fromkeys([MODEL, "gemini-3.8-flash", "gemini-3.6-flash"]))
-    
     try:
-        for model in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=payload, timeout=45)
-            if r.status_code == 200:
-                out = r.json()
-                parts = out.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-                reply = "".join(p.get("text", "") for p in parts).strip()
-                if reply:
-                    return reply
-            else:
-                print("GEMINI ERROR (wa):", model, r.status_code, r.text[:300], flush=True)
-    except Exception as e:
-        print("ASK_AI ERROR:", repr(e), flush=True)
+        messages = [{"role": "system", "content": SYSTEM_INSTRUCTION}]
+        for item in (history or [])[-10:]:
+            role = "user" if item.get("role") == "user" else "assistant"
+            messages.append({"role": role, "content": (item.get("text") or "")[:2000]})
+        messages.append({"role": "user", "content": message[:2000]})
+
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "llama-3.1-8b-instant", # Groq এর দ্রুত মডেল
+            "messages": messages
+        }
+        r = requests.post("https://api.groq.com/openai/v1/chat/completions", 
+                          headers=headers, json=payload, timeout=30)
         
-    return "দুঃখিত, এখন উত্তর দিতে পারছি না। একটু পরে আবার চেষ্টা করুন।"
+        if r.status_code == 200:
+            return r.json()["choices"][0]["message"]["content"].strip()
+        else:
+            print("GROQ ERROR:", r.status_code, r.text[:300], flush=True)
+            return f"দুঃখিত, Groq এরর দিচ্ছে ({r.status_code})। লগ চেক করুন।"
+            
+    except Exception as e:
+        print("GROQ EXCEPTION:", repr(e), flush=True)
+        return "দুঃখিত, এখন উত্তর দিতে পারছি না। একটু পরে আবার চেষ্টা করুন।"
 
 # ---------------- WhatsApp Logic ----------------
 
@@ -185,33 +149,14 @@ def privacy():
 <body style="font-family: Arial, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; line-height: 1.6;">
 <h1>Privacy Policy</h1>
 <p><strong>Service:</strong> Tonmoy AI Chat<br><strong>Last updated:</strong> 22 October 2026</p>
-<p>We receive your messages to generate replies using Google Gemini and Groq. We do not sell your data.</p>
+<p>We receive your messages to generate replies using Groq AI. We do not sell your data.</p>
 <p>Contact: mdtonmoyhossen322@gmail.com</p>
 </body></html>""", 200
-
-@app.route("/check-waba")
-def check_waba():
-    try:
-        r = requests.get(f"{GRAPH_API}/{WHATSAPP_WABA_ID}/subscribed_apps",
-                         headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}, timeout=30)
-        return jsonify({"status": r.status_code, "body": r.text[:500]})
-    except Exception as e:
-        return jsonify({"error": repr(e)})
-
-@app.route("/subscribe-waba")
-def subscribe_waba():
-    try:
-        r = requests.post(f"{GRAPH_API}/{WHATSAPP_WABA_ID}/subscribed_apps",
-                          headers={"Authorization": f"Bearer {WHATSAPP_TOKEN}"}, timeout=30)
-        return jsonify({"status": r.status_code, "body": r.text[:500]})
-    except Exception as e:
-        return jsonify({"error": repr(e)})
 
 @app.route("/debug")
 def debug():
     return jsonify({
         "groq_key_set": bool(GROQ_API_KEY),
-        "gemini_key_set": bool(GEMINI_API_KEY),
         "token_set": bool(WHATSAPP_TOKEN),
         "phone_id_set": bool(WHATSAPP_PHONE_ID),
         "verify_token_set": bool(WHATSAPP_VERIFY_TOKEN),
