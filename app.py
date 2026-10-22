@@ -185,6 +185,29 @@ def webhook_receive():
     return "ok", 200
 
 
+@app.route("/privacy")
+def privacy():
+    return """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy - Tonmoy AI Chat</title></head>
+<body style="font-family: Arial, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; line-height: 1.6; color: #222;">
+<h1>Privacy Policy</h1>
+<p><strong>Service:</strong> Tonmoy AI Chat (website and WhatsApp assistant)<br>
+<strong>Last updated:</strong> 22 October 2026</p>
+<h2>What we collect</h2>
+<p>When you chat with our website assistant or WhatsApp number, we receive the messages you send and, on WhatsApp, your phone number so we can reply to you.</p>
+<h2>How we use it</h2>
+<p>Your messages are sent to Google's Gemini AI service to generate a reply. We use your messages and phone number only to answer your questions and operate this chat service. We do not sell your personal information to anyone.</p>
+<h2>Data retention</h2>
+<p>Conversation history is kept only in temporary server memory so the assistant can follow the conversation, and it is cleared when the server restarts. We do not keep a permanent database of your chats.</p>
+<h2>Third parties</h2>
+<p>This service uses Meta's WhatsApp Business Platform to receive and send WhatsApp messages, and Google's Gemini API to generate answers. Their own privacy policies also apply.</p>
+<h2>Contact</h2>
+<p>Questions about this policy: mdtonmoyhossen322@gmail.com</p>
+</body></html>""", 200
+
+
 @app.route("/health")
 def health():
     return "ok"
