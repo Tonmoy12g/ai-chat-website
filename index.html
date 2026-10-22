@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI প্রশ্ন-উত্তর — যেকোনো প্রশ্ন করুন</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Hind Siliguri', system-ui, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; flex-direction: column; height: 100dvh; }
+  header { background: #1e293b; padding: 14px 16px; text-align: center; border-bottom: 1px solid #334155; }
+  header h1 { font-size: 20px; color: #38bdf8; }
+  header p { font-size: 13px; color: #94a3b8; margin-top: 2px; }
+  #chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; max-width: 800px; width: 100%; margin: 0 auto; }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 16px; line-height: 1.55; white-space: pre-wrap; word-wrap: break-word; font-size: 15px; }
+  .user { align-self: flex-end; background: #0284c7; color: #fff; border-bottom-right-radius: 4px; }
+  .ai { align-self: flex-start; background: #1e293b; border: 1px solid #334155; border-bottom-left-radius: 4px; }
+  .typing { color: #94a3b8; font-style: italic; }
+  footer { background: #1e293b; border-top: 1px solid #334155; padding: 10px; }
+  .bar { display: flex; gap: 8px; max-width: 800px; margin: 0 auto; }
+  #input { flex: 1; padding: 12px 14px; border-radius: 24px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font-size: 15px; outline: none; }
+  #input:focus { border-color: #38bdf8; }
+  #send { padding: 12px 20px; border: none; border-radius: 24px; background: #0284c7; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+  #send:disabled { opacity: .5; }
+  .hint { text-align: center; font-size: 12px; color: #64748b; margin-top: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🤖 AI প্রশ্ন-উত্তর</h1>
+  <p>যেকোনো প্রশ্ন করুন — AI সাথে সাথে উত্তর দেবে</p>
+</header>
+<div id="chat">
+  <div class="msg ai">আসসালামু আলাইকুম! 👋 আমাকে যেকোনো প্রশ্ন করুন — পড়াশোনা, প্রযুক্তি, সাধারণ জ্ঞান, যেকোনো বিষয়ে সাহায্য করতে পারি।</div>
+</div>
+<footer>
+  <div class="bar">
+    <input id="input" type="text" placeholder="আপনার প্রশ্ন লিখুন..." autocomplete="off">
+    <button id="send">পাঠান</button>
+  </div>
+  <div class="hint">AI মাঝে মাঝে ভুল উত্তর দিতে পারে — গুরুত্বপূর্ণ তথ্য যাচাই করে নিন।</div>
+</footer>
+<script>
+  const chat = document.getElementById('chat');
+  const input = document.getElementById('input');
+  const send = document.getElementById('send');
+  let history = [];
+
+  function addMsg(text, who) {
+    const d = document.createElement('div');
+    d.className = 'msg ' + who;
+    d.textContent = text;
+    chat.appendChild(d);
+    chat.scrollTop = chat.scrollHeight;
+    return d;
+  }
+
+  async function ask() {
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    addMsg(text, 'user');
+    history.push({role: 'user', text});
+    const t = addMsg('উত্তর তৈরি হচ্ছে...', 'ai typing');
+    send.disabled = true;
+    try {
+      const r = await fetch('/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({message: text, history: history.slice(0, -1)})});
+      const data = await r.json();
+      t.classList.remove('typing');
+      t.textContent = data.reply || 'দুঃখিত, উত্তর পাইনি।';
+      history.push({role: 'model', text: t.textContent});
+    } catch (e) {
+      t.classList.remove('typing');
+      t.textContent = 'দুঃখিত, সংযোগে সমস্যা হয়েছে। আবার চেষ্টা করুন।';
+    }
+    send.disabled = false;
+    input.focus();
+  }
+  send.addEventListener('click', ask);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+</script>
+</body>
+</html>
