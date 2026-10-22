@@ -4,9 +4,9 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-# API Key নেওয়া হচ্ছে এবং মেসেজে কোনো বাড়তি স্পেস বা কোটেশন (" বা ') থাকলে তা পরিষ্কার করা হচ্ছে
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip().strip('"').strip("'")
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 
 SYSTEM_INSTRUCTION = (
     "You are a friendly and helpful AI assistant on a public website. "
@@ -54,38 +54,25 @@ def chat():
         "system_instruction": {"parts": [{"text": SYSTEM_INSTRUCTION}]},
         "contents": contents,
     }
-
-    # শুধুমাত্র বর্তমানে চালু থাকা অফিশিয়াল মডেলগুলো রাখা হয়েছে
-    models_to_try = [MODEL, "gemini-2.5-flash", "gemini-2.5-flash-lite"]
-    # ডুপ্লিকেট নাম থাকলে বাদ দেওয়া হচ্ছে
-    models_to_try = list(dict.fromkeys(models_to_try))
-
     try:
         r = None
-        first_status = None
-        first_detail = ""
-
-        for model in models_to_try:
+        last_status = None
+        last_detail = ""
+        for model in ["gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"]:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             r = requests.post(url, params={"key": GEMINI_API_KEY}, json=payload, timeout=45)
-            
+            last_status = r.status_code
             if r.status_code == 200:
                 break
-                
             print("GEMINI ERROR:", model, r.status_code, r.text[:400], flush=True)
-            
-            if first_status is None:
-                first_status = r.status_code
-                try:
-                    first_detail = r.json().get("error", {}).get("message", "")[:200]
-                except Exception:
-                    first_detail = r.text[:200]
-
+            try:
+                last_detail = r.json().get("error", {}).get("message", "")[:150]
+            except Exception:
+                last_detail = r.text[:150]
         if r is None or r.status_code != 200:
-            return jsonify({"reply": f"দুঃখিত, AI সার্ভার থেকে উত্তর আসেনি (এরর {first_status}: {first_detail})।"}), 200
-
+            return jsonify({"reply": f"দুঃখিত, AI সার্ভার থেকে উত্তর আসেনি (এরর {last_status}: {last_detail})।"}), 200
         out = r.json()
-        parts = out.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+        parts = out["candidates"][0]["content"]["parts"]
         reply = "".join(p.get("text", "") for p in parts).strip()
         if not reply:
             reply = "দুঃখিত, উত্তর তৈরি করা যায়নি। আবার চেষ্টা করুন।"
@@ -93,6 +80,28 @@ def chat():
     except Exception as e:
         print("CHAT ERROR:", repr(e), flush=True)
         return jsonify({"reply": "দুঃখিত, সার্ভারে সমস্যা হয়েছে। একটু পরে আবার চেষ্টা করুন।"}), 200
+
+
+@app.route("/models")
+def models():
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "no key set"})
+    try:
+        r = requests.get(
+            "https://generativelanguage.googleapis.com/v1beta/models",
+            params={"key": GEMINI_API_KEY},
+            timeout=30,
+        )
+        if r.status_code != 200:
+            return jsonify({"status": r.status_code, "body": r.text[:300]})
+        names = [
+            m.get("name")
+            for m in r.json().get("models", [])
+            if "generateContent" in (m.get("supportedGenerationMethods") or [])
+        ]
+        return jsonify({"count": len(names), "models": names})
+    except Exception as e:
+        return jsonify({"error": repr(e)})
 
 
 @app.route("/health")
