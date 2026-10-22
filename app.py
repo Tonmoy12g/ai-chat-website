@@ -16,6 +16,9 @@ GRAPH_API = "https://graph.facebook.com/v21.0"
 # WhatsApp ব্যবহারকারীদের ছোট কথোপকথনের ইতিহাস (সার্ভার রিস্টার্টে মুছে যাবে)
 wa_history = {}
 
+# ডিবাগ: শেষ webhook মেসেজ ও শেষ পাঠানোর ফলাফল (শুধু অবস্থা, কোনো গোপন তথ্য না)
+debug_state = {"last_webhook": None, "last_send": None}
+
 SYSTEM_INSTRUCTION = (
     "You are a friendly and helpful AI assistant on a public website. "
     "Answer any question the user asks, clearly and helpfully. "
@@ -145,6 +148,7 @@ def send_whatsapp(to, text):
             json={"messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": text[:4000]}},
             timeout=30,
         )
+        debug_state["last_send"] = {"status": r.status_code, "body": r.text[:300]}
         if r.status_code != 200:
             print("WA SEND ERROR:", r.status_code, r.text[:300], flush=True)
     except Exception as e:
@@ -175,6 +179,8 @@ def webhook_receive():
                     text = (msg.get("text", {}) or {}).get("body", "").strip()
                     if not sender or not text:
                         continue
+                    import time as _t
+                    debug_state["last_webhook"] = {"at": _t.strftime("%H:%M:%S"), "from": sender[-4:], "text": text[:50]}
                     hist = wa_history.get(sender, [])
                     reply = ask_ai(text, hist)
                     hist = hist + [{"role": "user", "text": text}, {"role": "model", "text": reply}]
@@ -206,6 +212,18 @@ def privacy():
 <h2>Contact</h2>
 <p>Questions about this policy: mdtonmoyhossen322@gmail.com</p>
 </body></html>""", 200
+
+
+@app.route("/debug")
+def debug():
+    return jsonify({
+        "token_set": bool(WHATSAPP_TOKEN),
+        "phone_id_set": bool(WHATSAPP_PHONE_ID),
+        "verify_token_set": bool(WHATSAPP_VERIFY_TOKEN),
+        "gemini_key_set": bool(GEMINI_API_KEY),
+        "last_webhook": debug_state.get("last_webhook"),
+        "last_send": debug_state.get("last_send"),
+    })
 
 
 @app.route("/health")
