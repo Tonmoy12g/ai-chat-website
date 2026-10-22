@@ -18,7 +18,15 @@ SYSTEM_INSTRUCTION = (
 
 @app.route("/")
 def home():
-    return render_template("index.html")
+    try:
+        return render_template("index.html")
+    except Exception as e:
+        print("TEMPLATE ERROR:", repr(e), flush=True)
+        for candidate in ("templates/index.html", "index.html"):
+            if os.path.exists(candidate):
+                with open(candidate, encoding="utf-8") as f:
+                    return f.read()
+        return "Site is up, but index.html is missing. Check the templates folder.", 200
 
 
 @app.route("/chat", methods=["POST"])
@@ -35,7 +43,6 @@ def chat():
         message = message[:2000]
 
     contents = []
-    # আগের কথাবার্তা (সর্বোচ্চ শেষ 10টি) প্রসঙ্গ হিসেবে
     for item in history[-10:]:
         role = "user" if item.get("role") == "user" else "model"
         text = (item.get("text") or "")[:2000]
@@ -54,14 +61,17 @@ def chat():
             json=payload,
             timeout=45,
         )
-        r.raise_for_status()
+        if r.status_code != 200:
+            print("GEMINI ERROR:", r.status_code, r.text[:500], flush=True)
+            return jsonify({"reply": "দুঃখিত, AI সার্ভার থেকে উত্তর আসেনি। একটু পরে আবার চেষ্টা করুন।"}), 200
         out = r.json()
         parts = out["candidates"][0]["content"]["parts"]
         reply = "".join(p.get("text", "") for p in parts).strip()
         if not reply:
             reply = "দুঃখিত, উত্তর তৈরি করা যায়নি। আবার চেষ্টা করুন।"
         return jsonify({"reply": reply})
-    except Exception:
+    except Exception as e:
+        print("CHAT ERROR:", repr(e), flush=True)
         return jsonify({"reply": "দুঃখিত, সার্ভারে সমস্যা হয়েছে। একটু পরে আবার চেষ্টা করুন।"}), 200
 
 
