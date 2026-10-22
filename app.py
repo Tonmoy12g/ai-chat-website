@@ -4,7 +4,7 @@ from flask import Flask, render_template, request, jsonify
 
 app = Flask(__name__)
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 
@@ -55,15 +55,17 @@ def chat():
         "contents": contents,
     }
     try:
-        r = requests.post(
-            API_URL,
-            params={"key": GEMINI_API_KEY},
-            json=payload,
-            timeout=45,
-        )
-        if r.status_code != 200:
-            print("GEMINI ERROR:", r.status_code, r.text[:500], flush=True)
-            return jsonify({"reply": "দুঃখিত, AI সার্ভার থেকে উত্তর আসেনি। একটু পরে আবার চেষ্টা করুন।"}), 200
+        r = None
+        last_status = None
+        for model in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"]:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            r = requests.post(url, params={"key": GEMINI_API_KEY}, json=payload, timeout=45)
+            last_status = r.status_code
+            if r.status_code == 200:
+                break
+            print("GEMINI ERROR:", model, r.status_code, r.text[:400], flush=True)
+        if r is None or r.status_code != 200:
+            return jsonify({"reply": f"দুঃখিত, AI সার্ভার থেকে উত্তর আসেনি (এরর কোড: {last_status})। ওয়েবসাইটের মালিককে জানান।"}), 200
         out = r.json()
         parts = out["candidates"][0]["content"]["parts"]
         reply = "".join(p.get("text", "") for p in parts).strip()
