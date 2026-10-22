@@ -57,15 +57,20 @@ def chat():
     try:
         r = None
         last_status = None
-        for model in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"]:
+        last_detail = ""
+        for model in ["gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             r = requests.post(url, params={"key": GEMINI_API_KEY}, json=payload, timeout=45)
             last_status = r.status_code
             if r.status_code == 200:
                 break
             print("GEMINI ERROR:", model, r.status_code, r.text[:400], flush=True)
+            try:
+                last_detail = r.json().get("error", {}).get("message", "")[:150]
+            except Exception:
+                last_detail = r.text[:150]
         if r is None or r.status_code != 200:
-            return jsonify({"reply": f"দুঃখিত, AI সার্ভার থেকে উত্তর আসেনি (এরর কোড: {last_status})। ওয়েবসাইটের মালিককে জানান।"}), 200
+            return jsonify({"reply": f"দুঃখিত, AI সার্ভার থেকে উত্তর আসেনি (এরর {last_status}: {last_detail})।"}), 200
         out = r.json()
         parts = out["candidates"][0]["content"]["parts"]
         reply = "".join(p.get("text", "") for p in parts).strip()
